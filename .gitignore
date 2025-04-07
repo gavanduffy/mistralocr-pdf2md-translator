@@ -42,6 +42,3 @@ checkpoints_*/
 venv/
 env/
 ENV/
-
-# Misc
-*.pdf
