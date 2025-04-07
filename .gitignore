@@ -23,7 +23,6 @@ gradio_cached_examples/
 gradio_outputs/
 
 # Output files
-*.md
 output/
 images_*/
 checkpoints_*/
