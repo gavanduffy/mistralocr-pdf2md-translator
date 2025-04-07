@@ -1,0 +1,48 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Jupyter Notebook checkpoint files
+.ipynb_checkpoints/
+
+# Environment and configuration
+.env
+.env.*
+
+# VSCode / IDE
+.vscode/
+.idea/
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# Gradio temp directories
+gradio_cached_examples/
+gradio_outputs/
+
+# Output files
+*.md
+output/
+images_*/
+checkpoints_*/
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+*.swp
+*~
+
+# Pickle files (checkpoints)
+*.pkl
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Misc
+*.pdf
