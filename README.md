@@ -1,4 +1,4 @@
-# PDF Mistral OCR 匯出工具
+# Mistral OCR 翻譯PDF轉Markdown格式工具 
 
 本工具可將 PDF 文件自動化轉換為 Markdown 格式，包含以下功能：
 
