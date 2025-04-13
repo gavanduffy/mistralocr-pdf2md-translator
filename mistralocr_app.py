@@ -41,6 +41,14 @@ from mistralai.models import OCRResponse, ImageURLChunk, DocumentURLChunk, TextC
 from google import genai
 from google.genai import types
 
+# OpenAI
+# Import the library (add 'openai' to requirements.txt)
+try:
+    from openai import OpenAI
+except ImportError:
+    print("⚠️ OpenAI library not found. Please install it: pip install openai")
+    OpenAI = None # Set to None if import fails
+
 # ===== Pydantic Models =====
 
 class StructuredOCR(BaseModel):
@@ -129,8 +137,9 @@ DEFAULT_TRANSLATION_SYSTEM_INSTRUCTION = """
 4.  **直接輸出結果：** 請直接回傳翻譯後的完整 Markdown 文件，不要添加任何額外說明。
 """
 
-def translate_markdown_pages(pages, gemini_client, model="gemini-2.0-flash", system_instruction=None):
-    """Translate markdown pages using Gemini API. Yields progress strings and translated page content."""
+# Updated signature to accept openai_client
+def translate_markdown_pages(pages, gemini_client, openai_client, model="gemini-2.0-flash", system_instruction=None):
+    """Translate markdown pages using the selected API (Gemini or OpenAI). Yields progress strings and translated page content."""
     if system_instruction is None:
         system_instruction = DEFAULT_TRANSLATION_SYSTEM_INSTRUCTION
 
@@ -143,16 +152,58 @@ def translate_markdown_pages(pages, gemini_client, model="gemini-2.0-flash", sys
         yield progress_message # Yield progress string for Gradio log
 
         try:
-            response = gemini_client.models.generate_content(
-                model=model,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction
-                ),
-                contents=page
-            )
-            translated_md = response.text.strip()
-            # translated_pages.append(translated_md) # Removed collection here
-            # translated_md = response.text.strip() # Removed duplicate
+            if model.startswith("gpt-"):
+                # --- OpenAI Translation Logic ---
+                if not openai_client:
+                    error_msg = f"⚠️ OpenAI client not initialized for translation model {model}. Skipping page {idx+1}."
+                    print(error_msg)
+                    yield error_msg
+                    yield f"--- ERROR: OpenAI Client Error for Page {idx+1} ---\n\n{page}"
+                    continue # Skip to next page
+
+                print(f"    - Translating using OpenAI model: {model}")
+                try:
+                    # Construct messages for OpenAI translation
+                    # Use the provided system_instruction as the system message
+                    messages = [
+                        {"role": "system", "content": system_instruction},
+                        {"role": "user", "content": page} 
+                    ]
+                    
+                    response = openai_client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        temperature=0.1 # Lower temperature for more deterministic translation
+                    )
+                    translated_md = response.choices[0].message.content.strip()
+                except Exception as openai_e:
+                    error_msg = f"⚠️ OpenAI 翻譯第 {idx+1} / {total_pages} 頁失敗：{openai_e}"
+                    print(error_msg)
+                    yield error_msg # Yield error string to Gradio log
+                    yield f"--- ERROR: OpenAI Translation Failed for Page {idx+1} ---\n\n{page}"
+                    continue # Skip to next page
+
+            elif model.startswith("gemini"):
+                # --- Gemini Translation Logic ---
+                print(f"    - Translating using Gemini model: {model}")
+                response = gemini_client.models.generate_content(
+                    model=model,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction
+                    ),
+                    contents=page
+                )
+                translated_md = response.text.strip()
+            
+            else:
+                # --- Unsupported Model ---
+                error_msg = f"⚠️ Unsupported translation model: {model}. Skipping page {idx+1}."
+                print(error_msg)
+                yield error_msg
+                yield f"--- ERROR: Unsupported Translation Model for Page {idx+1} ---\n\n{page}"
+                continue # Skip to next page
+
+            # --- Yield successful translation ---
             # translated_pages.append(translated_md) # Removed duplicate append
 
             yield translated_md # Yield the actual translated page content
@@ -195,46 +246,265 @@ def process_pdf_with_mistral_ocr(pdf_path, client, model="mistral-ocr-latest"):
     
     return pdf_response
 
-def process_images_with_ocr(pdf_response, mistral_client, model="pixtral-12b-latest"):
-    """Process images from PDF pages with OCR."""
+# Updated function signature to include structure_text_only
+def process_images_with_ocr(pdf_response, mistral_client, gemini_client, openai_client, structure_model="pixtral-12b-latest", structure_text_only=False):
+    """Process images from PDF pages with OCR and structure using the specified model."""
     image_ocr_results = {}
     
     for page_idx, page in enumerate(pdf_response.pages):
         for i, img in enumerate(page.images):
             base64_data_url = img.image_base64
             
+            # Extract raw base64 data for Gemini
+            try:
+                # Handle potential variations in data URL prefix
+                if ',' in base64_data_url:
+                    base64_content = base64_data_url.split(',', 1)[1]
+                else:
+                    # Assume it's just the base64 content if no comma prefix
+                    base64_content = base64_data_url 
+                # Decode and re-encode to ensure it's valid base64 bytes for Gemini
+                image_bytes = base64.b64decode(base64_content)
+            except Exception as e:
+                print(f"⚠️ Error decoding base64 for page {page_idx+1}, image {i+1}: {e}. Skipping image.")
+                continue # Skip this image if base64 is invalid
+
             def run_ocr_and_parse():
-                # Step 1: basic OCR
+                # Step 1: Basic OCR (always use Mistral OCR for initial text extraction)
+                print(f"  - Performing basic OCR on page {page_idx+1}, image {i+1}...")
                 image_response = mistral_client.ocr.process(
                     document=ImageURLChunk(image_url=base64_data_url),
-                    model="mistral-ocr-latest"
+                    model="mistral-ocr-latest" # Use the dedicated OCR model here
                 )
                 image_ocr_markdown = image_response.pages[0].markdown
+                print(f"  - Basic OCR text extracted.")
+
+                # Step 2: Structure the OCR markdown using the selected model
+                print(f"  - Structuring OCR using: {structure_model}")
+                if structure_model == "pixtral-12b-latest":
+                    print(f"    - Using Mistral Pixtral...")
+                    print(f"    - Sending request to Pixtral API...") # Added print statement
+                    structured = mistral_client.chat.parse(
+                        model=structure_model, # Use the selected structure_model
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    ImageURLChunk(image_url=base64_data_url),
+                                    TextChunk(text=(
+                                        f"This is the image's OCR in markdown:\n{image_ocr_markdown}\n. "
+                                        "Convert this into a structured JSON response with the OCR contents in a sensible dictionary."
+                                    ))
+                                ]
+                            }
+                        ],
+                        response_format=StructuredOCR, # Use Pydantic model for expected structure
+                        temperature=0
+                    )
+                    structured_data = structured.choices[0].message.parsed
+                    pretty_text = json.dumps(structured_data.ocr_contents, indent=2, ensure_ascii=False)
+
+                elif structure_model.startswith("gemini"): # Handle gemini-flash-2.0 etc.
+                    print(f"    - Using Google Gemini ({structure_model})...")
+                    # Define the base prompt text
+                    base_prompt_text = f"""
+You are an expert OCR structuring assistant. Your goal is to extract and structure the relevant content into a JSON object based on the provided information.
+
+**Initial OCR Markdown:**
+```markdown
+{image_ocr_markdown}
+```
+
+**Task:**
+Generate a JSON object containing the structured OCR content found in the image. Focus on extracting meaningful information and organizing it logically within the JSON. The JSON should represent the `ocr_contents` field.
+
+**Output Format:**
+Return ONLY the JSON object, without any surrounding text or markdown formatting. Example:
+```json
+{{
+  "title": "Example Title",
+  "sections": [
+    {{"header": "Section 1", "content": "Details..."}},
+    {{"header": "Section 2", "content": "More details..."}}
+  ],
+  "key_value_pairs": {{
+    "key1": "value1",
+    "key2": "value2"
+  }}
+}}
+```
+(Adapt the structure based on the image content.)
+"""
+                    # Prepare API call based on structure_text_only flag
+                    gemini_contents = []
+                    if structure_text_only:
+                        print("    - Mode: Text-only structuring")
+                        # Modify prompt slightly for text-only
+                        gemini_prompt = base_prompt_text.replace(
+                            "Analyze the provided image and the initial OCR text", 
+                            "Analyze the initial OCR text"
+                        ).replace(
+                            "content from the image",
+                            "content from the text"
+                        )
+                        gemini_contents.append(gemini_prompt)
+                    else:
+                        print("    - Mode: Image + Text structuring")
+                        gemini_prompt = base_prompt_text # Use original prompt
+                        # Prepare image part for Gemini using types.Part.from_bytes
+                        # Assuming PNG, might need dynamic type detection in the future
+                        # Pass the decoded image_bytes, not the base64_content string
+                        try: # Corrected indentation
+                            image_part = types.Part.from_bytes(
+                                mime_type="image/png", 
+                                data=image_bytes 
+                            )
+                            gemini_contents = [gemini_prompt, image_part] # Text prompt first, then image Part
+                        except Exception as e:
+                             print(f"    - ⚠️ Error creating Gemini image Part: {e}. Skipping image structuring.")
+                             # Fallback or re-raise depending on desired behavior
+                             pretty_text = json.dumps({"error": "Failed to create Gemini image Part", "details": str(e)}, indent=2, ensure_ascii=False)
+                             return pretty_text # Exit run_ocr_and_parse for this image
+
+                    # Call Gemini API - Corrected to use gemini_client.models.generate_content
+                    print(f"    - Sending request to Gemini API ({structure_model})...") # Added print statement
+                    
+                    try:
+                        response = gemini_client.models.generate_content(
+                            model=structure_model, 
+                            contents=gemini_contents # Pass the constructed list
+                        )
+                    except Exception as api_e:
+                         print(f"    - ⚠️ Error calling Gemini API: {api_e}")
+                         # Fallback or re-raise
+                         pretty_text = json.dumps({"error": "Failed to call Gemini API", "details": str(api_e)}, indent=2, ensure_ascii=False)
+                         return pretty_text # Exit run_ocr_and_parse for this image
+                    
+                    # Extract and clean the JSON response
+                    raw_json_text = response.text.strip()
+                    # Remove potential markdown code fences
+                    if raw_json_text.startswith("```json"):
+                        raw_json_text = raw_json_text[7:]
+                    if raw_json_text.endswith("```"):
+                        raw_json_text = raw_json_text[:-3]
+                    raw_json_text = raw_json_text.strip()
+
+                    # Validate and format the JSON
+                    try:
+                        parsed_json = json.loads(raw_json_text)
+                        pretty_text = json.dumps(parsed_json, indent=2, ensure_ascii=False)
+                    except json.JSONDecodeError as json_e:
+                        print(f"    - ⚠️ Gemini response was not valid JSON: {json_e}")
+                        print(f"    - Raw response: {raw_json_text}")
+                        # Fallback: return the raw text wrapped in a basic JSON structure
+                        pretty_text = json.dumps({"error": "Failed to parse Gemini JSON response", "raw_output": raw_json_text}, indent=2, ensure_ascii=False)
+
+                elif structure_model == "gpt-4o-mini":
+                    print(f"    - Using OpenAI GPT-4o mini...")
+                    if not openai_client:
+                        print("    - ⚠️ OpenAI client not initialized. Skipping.")
+                        return json.dumps({"error": "OpenAI client not initialized. Check API key and library installation."}, indent=2, ensure_ascii=False)
+
+                    # Define the base prompt text for OpenAI
+                    openai_base_prompt = f"""
+You are an expert OCR structuring assistant. Your goal is to extract and structure the relevant content into a JSON object based on the provided information.
+
+**Initial OCR Markdown:**
+```markdown
+{image_ocr_markdown}
+```
+
+**Task:**
+Generate a JSON object containing the structured OCR content found in the image. Focus on extracting meaningful information and organizing it logically within the JSON. The JSON should represent the `ocr_contents` field.
+
+**Output Format:**
+Return ONLY the JSON object, without any surrounding text or markdown formatting. Example:
+```json
+{{
+  "title": "Example Title",
+  "sections": [
+    {{"header": "Section 1", "content": "Details..."}},
+    {{"header": "Section 2", "content": "More details..."}}
+  ],
+  "key_value_pairs": {{
+    "key1": "value1",
+    "key2": "value2"
+  }}
+}}
+```
+(Adapt the structure based on the image content. Ensure the output is valid JSON.)
+"""
+                    # Prepare payload for OpenAI vision based on structure_text_only
+                    openai_content_list = []
+                    if structure_text_only:
+                        print("    - Mode: Text-only structuring")
+                        # Modify prompt slightly for text-only
+                        openai_prompt = openai_base_prompt.replace(
+                            "Analyze the provided image and the initial OCR text", 
+                            "Analyze the initial OCR text"
+                        ).replace(
+                            "content from the image",
+                            "content from the text"
+                        )
+                        openai_content_list.append({"type": "text", "text": openai_prompt})
+                    else:
+                        print("    - Mode: Image + Text structuring")
+                        openai_prompt = openai_base_prompt # Use original prompt
+                        # Use the base64_content string directly for the data URL
+                        # Assuming PNG, might need dynamic type detection
+                        image_data_url = f"data:image/png;base64,{base64_content}" # Corrected indentation
+                        openai_content_list.append({"type": "text", "text": openai_prompt})
+                        openai_content_list.append({
+                            "type": "image_url",
+                            "image_url": {"url": image_data_url, "detail": "auto"}, 
+                        })
+
+                    print(f"    - Sending request to OpenAI API ({structure_model})...")
+                    try:
+                        response = openai_client.chat.completions.create(
+                            model=structure_model,
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": openai_content_list, # Pass the constructed list
+                                }
+                            ],
+                            # Optionally add max_tokens if needed, but rely on prompt for JSON structure
+                            # max_tokens=1000, 
+                            temperature=0.1 # Lower temperature for deterministic JSON
+                        )
+                        
+                        raw_json_text = response.choices[0].message.content.strip()
+                        # Clean potential markdown fences
+                        if raw_json_text.startswith("```json"):
+                            raw_json_text = raw_json_text[7:]
+                        if raw_json_text.endswith("```"):
+                            raw_json_text = raw_json_text[:-3]
+                        raw_json_text = raw_json_text.strip()
+
+                        # Validate and format JSON
+                        try:
+                            parsed_json = json.loads(raw_json_text)
+                            pretty_text = json.dumps(parsed_json, indent=2, ensure_ascii=False)
+                        except json.JSONDecodeError as json_e:
+                            print(f"    - ⚠️ OpenAI response was not valid JSON: {json_e}")
+                            print(f"    - Raw response: {raw_json_text}")
+                            pretty_text = json.dumps({"error": "Failed to parse OpenAI JSON response", "raw_output": raw_json_text}, indent=2, ensure_ascii=False)
+
+                    except Exception as api_e:
+                        print(f"    - ⚠️ Error calling OpenAI API: {api_e}")
+                        pretty_text = json.dumps({"error": "Failed to call OpenAI API", "details": str(api_e)}, indent=2, ensure_ascii=False)
                 
-                # Step 2: structure the OCR markdown
-                structured = mistral_client.chat.parse(
-                    model=model,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                ImageURLChunk(image_url=base64_data_url),
-                                TextChunk(text=(
-                                    f"This is the image's OCR in markdown:\n{image_ocr_markdown}\n. "
-                                    "Convert this into a structured JSON response with the OCR contents in a sensible dictionary."
-                                ))
-                            ]
-                        }
-                    ],
-                    response_format=StructuredOCR,
-                    temperature=0
-                )
-                
-                structured_data = structured.choices[0].message.parsed
-                pretty_text = json.dumps(structured_data.ocr_contents, indent=2, ensure_ascii=False)
+                else: # Final attempt to correct indentation for the final else
+                    print(f"    - ⚠️ Unsupported structure model: {structure_model}. Skipping structuring.")
+                    # Fallback: return the basic OCR markdown wrapped in JSON
+                    pretty_text = json.dumps({"unstructured_ocr": image_ocr_markdown}, indent=2, ensure_ascii=False)
+
                 return pretty_text
             
             try:
+                # Pass the actual structure model name to the inner function if needed,
+                # or rely on the outer scope variable 'structure_model' as done here.
                 result = retry_with_backoff(run_ocr_and_parse, retries=4)
                 image_ocr_results[(page_idx, img.id)] = result
             except Exception as e:
@@ -243,7 +513,8 @@ def process_images_with_ocr(pdf_response, mistral_client, model="pixtral-12b-lat
     # Reorganize results by page
     ocr_by_page = {}
     for (page_idx, img_id), ocr_text in image_ocr_results.items():
-        ocr_by_page.setdefault(page_idx, {})[img_id] = ocr_text
+            ocr_by_page.setdefault(page_idx, {})[img_id] = ocr_text
+            print(f"  - Successfully processed page {page_idx+1}, image {i+1} with {structure_model}.")
     
     return ocr_by_page
 
@@ -271,12 +542,15 @@ def load_checkpoint(filename, console_output=None):
 
 # ===== Main Processing Function =====
 
+# Updated function signature to include structure_text_only
 def process_pdf_to_markdown(
     pdf_path, 
     mistral_client, 
     gemini_client,
+    openai_client, 
     ocr_model="mistral-ocr-latest",
     structure_model="pixtral-12b-latest",
+    structure_text_only=False, # Added structure_text_only
     translation_model="gemini-2.0-flash",
     translation_system_prompt=None,
     process_images=True,
@@ -291,17 +565,19 @@ def process_pdf_to_markdown(
 
     pdf_file = Path(pdf_path)
     filename_stem = pdf_file.stem
-    print(f"--- 開始處理檔案: {pdf_file.name} ---") # Console print
+    # Sanitize the filename stem here as well
+    sanitized_stem = filename_stem.replace(" ", "_")
+    print(f"--- 開始處理檔案: {pdf_file.name} (Sanitized Stem: {sanitized_stem}) ---") # Console print
 
     # Output and checkpoint directories are now expected to be set by the caller (Gradio function)
     # os.makedirs(output_dir, exist_ok=True) # Ensure caller created it
     # os.makedirs(checkpoint_dir, exist_ok=True) # Ensure caller created it
 
-    # Checkpoint files
-    pdf_ocr_checkpoint = os.path.join(checkpoint_dir, f"{filename_stem}_pdf_ocr.pkl")
-    image_ocr_checkpoint = os.path.join(checkpoint_dir, f"{filename_stem}_image_ocr.pkl")
+    # Checkpoint files - Use sanitized_stem
+    pdf_ocr_checkpoint = os.path.join(checkpoint_dir, f"{sanitized_stem}_pdf_ocr.pkl")
+    image_ocr_checkpoint = os.path.join(checkpoint_dir, f"{sanitized_stem}_image_ocr.pkl")
     # Checkpoint for raw page data (list of tuples: (raw_markdown_text, images_dict))
-    raw_page_data_checkpoint = os.path.join(checkpoint_dir, f"{filename_stem}_raw_page_data.pkl")
+    raw_page_data_checkpoint = os.path.join(checkpoint_dir, f"{sanitized_stem}_raw_page_data.pkl")
 
     # Step 1: Process PDF with OCR (with checkpoint)
     pdf_response = None
@@ -328,11 +604,19 @@ def process_pdf_to_markdown(
             ocr_by_page, load_msg = load_checkpoint(image_ocr_checkpoint) # Get message
             if load_msg: yield load_msg # Yield message
 
-        if ocr_by_page is None or not ocr_by_page: # Check if empty dict from checkpoint
-            msg = "🖼️ 正在處理圖片 OCR..."
+        if ocr_by_page is None or not ocr_by_page: # Check if empty dict from checkpoint or explicitly empty
+            msg = f"🖼️ 正在使用 '{structure_model}' 處理圖片 OCR 與結構化..."
             yield msg
             print(msg) # Console print
-            ocr_by_page = process_images_with_ocr(pdf_response, mistral_client, model=structure_model)
+            # Pass gemini_client and correct structure_model parameter name
+            ocr_by_page = process_images_with_ocr(
+                pdf_response, 
+                mistral_client, 
+                gemini_client, 
+                openai_client, 
+                structure_model=structure_model,
+                structure_text_only=structure_text_only # Pass the text-only flag
+            )
             save_msg = save_checkpoint(ocr_by_page, image_ocr_checkpoint) # save_checkpoint already prints
             if save_msg: yield save_msg # Yield message
         else:
@@ -389,7 +673,8 @@ def process_pdf_to_markdown(
 
     # Step 3.6: Save images and replace links in the (potentially modified) markdown
     final_markdown_pages = [] # This list will have final file paths as links
-    image_folder_name = os.path.join(output_dir, f"images_{filename_stem}")
+    # Use sanitized_stem for image folder name
+    image_folder_name = os.path.join(output_dir, f"images_{sanitized_stem}") 
     msg = f"🖼️ 正在儲存圖片並更新 Markdown 連結至 '{os.path.basename(image_folder_name)}'..."
     yield msg
     print(msg)
@@ -403,10 +688,11 @@ def process_pdf_to_markdown(
     translated_markdown_pages = None # Initialize
     need_translation = "中文翻譯" in output_formats_selected
     if need_translation:
-        # Translate the final list with correct image links
+        # Translate the final list with correct image links, passing both clients
         translation_generator = translate_markdown_pages(
-            final_markdown_pages, # Use the final list with links replaced
+            final_markdown_pages, 
             gemini_client,
+            openai_client, # Pass openai_client
             model=translation_model,
             system_instruction=translation_system_prompt
         )
@@ -430,10 +716,10 @@ def process_pdf_to_markdown(
     final_markdown_original = "\n\n---\n\n".join(final_markdown_pages) # Use the final pages with links
     final_markdown_translated = "\n\n---\n\n".join(translated_markdown_pages) if translated_markdown_pages else None
 
-    # Step 6: Save files based on selection
+    # Step 6: Save files based on selection - Use sanitized_stem
     saved_files = {}
     if "英文原文" in output_formats_selected:
-        original_md_name = os.path.join(output_dir, f"{filename_stem}_original.md")
+        original_md_name = os.path.join(output_dir, f"{sanitized_stem}_original.md")
         try:
             with open(original_md_name, "w", encoding="utf-8") as f:
                 f.write(final_markdown_original)
@@ -447,7 +733,7 @@ def process_pdf_to_markdown(
             print(msg)
 
     if "中文翻譯" in output_formats_selected and final_markdown_translated:
-        translated_md_name = os.path.join(output_dir, f"{filename_stem}_translated.md")
+        translated_md_name = os.path.join(output_dir, f"{sanitized_stem}_translated.md")
         try:
             with open(translated_md_name, "w", encoding="utf-8") as f:
                 f.write(final_markdown_translated)
@@ -460,9 +746,9 @@ def process_pdf_to_markdown(
             yield msg
             print(msg)
 
-    # Always report image folder path if images were processed/saved
+    # Always report image folder path if images were processed/saved - Use sanitized_stem
     if process_images:
-        image_folder_name = os.path.join(output_dir, f"images_{filename_stem}")
+        image_folder_name = os.path.join(output_dir, f"images_{sanitized_stem}")
         msg = f"✅ 圖片資料夾：{image_folder_name}"
         yield msg
         print(msg) # Console print
@@ -495,7 +781,24 @@ def create_gradio_interface():
     if not gemini_api_key:
         raise ValueError("❌ 未在 .env 找到 GEMINI_API_KEY，請確認已正確設置。")
     gemini_client = genai.Client(api_key=gemini_api_key)
-    
+
+    # Initialize OpenAI client if library is available
+    openai_client = None
+    if OpenAI:
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            print("⚠️ 未在 .env 找到 OPENAI_API_KEY。若要使用 OpenAI 模型，請設置此環境變數。")
+            # Don't raise error, just disable OpenAI models if key is missing
+        else:
+            try:
+                openai_client = OpenAI(api_key=openai_api_key)
+                print("✅ OpenAI client initialized.")
+            except Exception as e:
+                print(f"❌ 初始化 OpenAI client 失敗: {e}")
+                openai_client = None # Ensure client is None if init fails
+    else:
+        print("ℹ️ OpenAI library 未安裝，無法使用 OpenAI 模型。")
+
     # Define processing function for Gradio
     def process_pdf(
         pdf_file,
@@ -504,9 +807,10 @@ def create_gradio_interface():
         translation_model,
         translation_system_prompt,
         process_images,
-        output_formats_selected, # Changed from output_format
+        output_formats_selected, 
         output_dir,
-        use_existing_checkpoints
+        use_existing_checkpoints,
+        structure_text_only # Added new parameter from Gradio input
     ):
         # Accumulate logs for console output
         log_accumulator = ""
@@ -530,7 +834,9 @@ def create_gradio_interface():
 
         pdf_path_obj = Path(pdf_file) # Use Path object for consistency
         filename_stem = pdf_path_obj.stem
-        print(f"收到檔案: {pdf_path_obj.name}") # Console print
+        # Sanitize the filename stem (replace spaces with underscores)
+        sanitized_stem = filename_stem.replace(" ", "_")
+        print(f"收到檔案: {pdf_path_obj.name} (Sanitized Stem: {sanitized_stem})") # Console print
         print(f"選擇的輸出格式: {output_formats_selected}") # Console print
 
         # --- Output Directory Logic ---
@@ -542,8 +848,8 @@ def create_gradio_interface():
             output_dir = os.path.join(default_output_parent, default_output_folder)
         # else: use the provided output_dir
 
-        # Ensure output and checkpoint directories exist
-        checkpoint_dir = os.path.join(output_dir, f"checkpoints_{filename_stem}")
+        # Ensure output and checkpoint directories exist (use sanitized stem for checkpoint dir)
+        checkpoint_dir = os.path.join(output_dir, f"checkpoints_{sanitized_stem}")
         try:
             os.makedirs(output_dir, exist_ok=True)
             os.makedirs(checkpoint_dir, exist_ok=True)
@@ -582,8 +888,10 @@ def create_gradio_interface():
                 pdf_path=pdf_file, # Pass the file path/object directly
                 mistral_client=mistral_client,
                 gemini_client=gemini_client,
+                openai_client=openai_client, 
                 ocr_model=ocr_model,
                 structure_model=structure_model,
+                structure_text_only=structure_text_only, # Pass text-only flag
                 translation_model=translation_model,
                 translation_system_prompt=translation_system_prompt if translation_system_prompt.strip() else None,
                 process_images=process_images,
@@ -648,9 +956,9 @@ def create_gradio_interface():
             yield error_message, log_accumulator
 
     # Create Gradio interface
-    with gr.Blocks(title="PDF Mistral OCR 匯出工具") as demo:
-        gr.Markdown("# PDF Mistral OCR 匯出工具")
-        gr.Markdown("將 PDF 文件自動化轉換為 Markdown 格式，支援圖片 OCR 與中文翻譯")
+    with gr.Blocks(title="Mistral OCR 翻譯工具") as demo: # Updated title slightly
+        gr.Markdown("# Mistral OCR 翻譯PDF轉Markdown格式工具")
+        gr.Markdown("將 PDF 文件轉為 Markdown 格式，支援圖片 OCR 和英文到繁體中文翻譯，使用 **Mistral**、**Gemini** 和 **OpenAI** 模型。") # Added OpenAI
         
         with gr.Row():
             with gr.Column(scale=1):
@@ -701,16 +1009,28 @@ def create_gradio_interface():
                         value="mistral-ocr-latest"
                     )
                     structure_model = gr.Dropdown(
-                        label="結構化模型", 
-                        choices=["pixtral-12b-latest"], 
-                        value="pixtral-12b-latest"
+                        label="結構化模型 (用於圖片 OCR)", 
+                        choices=["pixtral-12b-latest", "gemini-2.0-flash", "gpt-4o-mini", "gpt-4o"], # Added gpt-4o
+                        value="gemini-2.0-flash",
+                        info="選擇用於結構化圖片 OCR 結果的模型。選擇 Gemini 或 OpenAI 模型需要對應的 API Key 在 .env 檔案中設定。" # Updated info
+                    )
+                    structure_text_only = gr.Checkbox(
+                        label="僅用文字進行結構化 (節省 Token)",
+                        value=False,
+                        info="勾選後，僅將圖片的初步 OCR 文字傳送給 Gemini 或 OpenAI 進行結構化，不傳送圖片本身。對 Pixtral 無效。⚠️注意：缺少圖片視覺資訊可能導致結構化效果不佳，建議僅在 OCR 文字已足夠清晰時使用。"
                     )
                     translation_model = gr.Dropdown(
                         label="翻譯模型", 
-                        choices=["gemini-2.0-flash", "gemini-2.5-pro-exp-03-25", "gemini-2.0-flash-lite"], 
-                        value="gemini-2.0-flash"
+                        choices=[
+                            "gemini-2.0-flash", 
+                            "gemini-2.5-pro-exp-03-25", 
+                            "gemini-2.0-flash-lite",
+                            "gpt-4o", # Added OpenAI models
+                            "gpt-4o-mini" 
+                        ], 
+                        value="gemini-2.0-flash",
+                        info="選擇用於翻譯的模型。選擇 Gemini 或 OpenAI 模型需要對應的 API Key 在 .env 檔案中設定。" # Added info
                     )
-                
                 with gr.Accordion("進階設定", open=False):
                     translation_system_prompt = gr.Textbox(
                         label="翻譯系統提示詞", 
@@ -733,6 +1053,53 @@ def create_gradio_interface():
                         autoscroll=True # Add autoscroll
                     )
 
+                with gr.Tab("使用說明"):  
+                    
+                    gr.Markdown("""
+                        # 使用說明（本地版本）
+
+                        1. 上傳 PDF 檔案（可拖曳或點擊上傳）  
+                        2. 基本設定：  
+                        - 指定輸出目錄（可選，留空使用預設目錄）  
+                        - 選擇是否使用現有檢查點（如果存在）  
+                        - 選擇輸出格式（中文翻譯、英文原文）  
+                        3. 處理選項：  
+                        - 選擇是否處理圖片 OCR  
+                        - 選擇是否翻譯成中文（若輸出格式僅選「英文原文」則略過翻譯）  
+                        4. 模型與進階設定（可選）：  
+                        - 選擇 OCR、結構化、翻譯模型  
+                        - 修改翻譯提示詞（若需其他語言）  
+                        5. 點擊「開始處理」按鈕  
+                        6. 處理期間可於「處理日誌」查看進度  
+                        7. 完成後，結果將顯示於「輸出結果」頁，並自動儲存至指定目錄  
+
+                        ## API 金鑰設定 (.env)
+
+                        請於專案根目錄建立 `.env` 檔案，填入以下內容：
+
+                        ```
+                        MISTRAL_API_KEY=your_mistral_key
+                        GEMINI_API_KEY=your_gemini_key       # 可選
+                        OPENAI_API_KEY=your_openai_key       # 可選
+                        ```
+
+                        ## 檢查點說明
+
+                        - **PDF OCR 檢查點**：儲存 PDF 的文字識別結果  
+                        - **圖片 OCR 檢查點**：儲存圖片區塊的 OCR 結果  
+                        - **Markdown 檢查點**：儲存已產出的 Markdown 檔案  
+                        可取消勾選「使用現有檢查點」重新處理，或手動刪除 `checkpoints/` 資料夾。
+
+                        ## 輸出檔案
+
+                        - `[檔名]_translated.md`：翻譯後的 Markdown 檔案  
+                        - `[檔名]_original.md`：原始英文 Markdown 檔案  
+                        - `images_[檔名]/`：提取圖片資料夾  
+                        - `checkpoints/`：處理過程中的中繼檔案  
+                    """)
+
+                
+
         # Define outputs for the click event
         # The order matches how Gradio handles generators:
         # Last yield goes to the first output, intermediate yields go to the second.
@@ -749,7 +1116,8 @@ def create_gradio_interface():
             # translate, # Removed from inputs as it's redundant now
             output_format, # Now CheckboxGroup list
             output_dir,
-            use_existing_checkpoints
+            use_existing_checkpoints,
+            structure_text_only # Added new checkbox input
         ]
 
         # Use process_button.click with the generator function
@@ -764,38 +1132,20 @@ def create_gradio_interface():
         # demo.unload(fn=lambda: os._exit(0))
 
 
-        gr.Markdown("""
-        ## 使用說明
-        
-        1. 上傳 PDF 檔案（可拖曳或點擊上傳）
-        2. 基本設定：
-           - 指定輸出目錄（可選，留空使用預設目錄）
-           - 選擇是否使用現有檢查點（如果存在）
-           - 選擇輸出格式（中文翻譯、英文原文、中英對照）
-        3. 處理選項：
-           - 選擇是否處理圖片 OCR
-           - 選擇是否翻譯成中文（注意：如果輸出格式選擇「英文原文」，則不會進行翻譯）
-        4. 點擊「開始處理」按鈕
-        5. 處理過程中，可在「處理日誌」標籤頁查看進度
-        6. 處理完成後，結果將顯示在「輸出結果」標籤頁，並自動儲存檔案到指定目錄
-        
-        ## 檢查點說明
-        
-        本工具會在處理過程中建立檢查點，以便在中斷後繼續處理，避免重複請求 API：
-        
-        - **PDF OCR 檢查點**：儲存 PDF 文件的 OCR 結果
-        - **圖片 OCR 檢查點**：儲存 PDF 中圖片的 OCR 結果
-        - **Markdown 檢查點**：儲存生成的 Markdown 頁面
-        
-        如果您想重新處理特定步驟，可以取消勾選「使用現有檢查點」選項，或手動刪除檢查點目錄。
-        
-        ## 輸出檔案
-        
-        - `[檔名]_translated.md`：翻譯後的 Markdown 檔案
-        - `[檔名]_original.md`：原始英文 Markdown 檔案
-        - `images_[檔名]/`：儲存的圖片資料夾
-        - `checkpoints/`：處理過程中的檢查點資料夾
-        """)
+        gr.Markdown(""" 
+            ---
+
+            **免責聲明**  
+            本工具僅供學習與研究用途，整合 Mistral、Google Gemini 和 OpenAI API。請確保：
+            - 您擁有合法的 API 金鑰，並遵守各服務條款（[Mistral](https://mistral.ai/terms)、[Gemini](https://ai.google.dev/terms)、[OpenAI](https://openai.com/policies)）。  
+            - 上傳的 PDF 文件符合版權法規，您有權進行處理。  
+            - 翻譯結果可能有誤，請自行驗證。  
+            本工具不儲存任何上傳檔案或 API 金鑰，所有處理均在暫存環境中完成。
+
+            **版權資訊**  
+            Copyright © 2025 David Chang. 根據 MIT 授權發布，詳見 [LICENSE](https://github.com/dodo13114arch/mistralocr-pdf2md-translator/blob/main/LICENSE)。  
+            GitHub: https://github.com/dodo13114arch/mistralocr-pdf2md-translator
+            """)
     
     return demo
 
