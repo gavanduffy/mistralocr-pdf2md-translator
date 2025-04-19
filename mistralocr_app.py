@@ -399,8 +399,8 @@ Return ONLY the JSON object, without any surrounding text or markdown formatting
                         # Fallback: return the raw text wrapped in a basic JSON structure
                         pretty_text = json.dumps({"error": "Failed to parse Gemini JSON response", "raw_output": raw_json_text}, indent=2, ensure_ascii=False)
 
-                elif structure_model == "gpt-4o-mini":
-                    print(f"    - Using OpenAI GPT-4o mini...")
+                elif structure_model.startswith("gpt-"):
+                    print(f"    - Using OpenAI model: {structure_model}...")
                     if not openai_client:
                         print("    - ⚠️ OpenAI client not initialized. Skipping.")
                         return json.dumps({"error": "OpenAI client not initialized. Check API key and library installation."}, indent=2, ensure_ascii=False)
@@ -1010,9 +1010,17 @@ def create_gradio_interface():
                     )
                     structure_model = gr.Dropdown(
                         label="結構化模型 (用於圖片 OCR)", 
-                        choices=["pixtral-12b-latest", "gemini-2.0-flash", "gpt-4o-mini", "gpt-4o"], # Added gpt-4o
+                        choices=[
+                            ("pixtral-12b-latest (Recommend)", "pixtral-12b-latest"),
+                            ("gemini-2.0-flash (Recommend)", "gemini-2.0-flash"),
+                            ("gpt-4o-mini", "gpt-4o-mini"),
+                            ("gpt-4o", "gpt-4o"),
+                            ("gpt-4.1-nano (Not Recommend)", "gpt-4.1-nano"),
+                            ("gpt-4.1-mini", "gpt-4.1-mini"),
+                            ("gpt-4.1", "gpt-4.1")
+                        ], 
                         value="gemini-2.0-flash",
-                        info="選擇用於結構化圖片 OCR 結果的模型。選擇 Gemini 或 OpenAI 模型需要對應的 API Key 在 .env 檔案中設定。" # Updated info
+                        info="選擇用於結構化圖片 OCR 結果的模型。選擇 Gemini 或 OpenAI 模型需要對應的 API Key 在 .env 檔案中設定。"
                     )
                     structure_text_only = gr.Checkbox(
                         label="僅用文字進行結構化 (節省 Token)",
@@ -1022,14 +1030,17 @@ def create_gradio_interface():
                     translation_model = gr.Dropdown(
                         label="翻譯模型", 
                         choices=[
-                            "gemini-2.0-flash", 
-                            "gemini-2.5-pro-exp-03-25", 
-                            "gemini-2.0-flash-lite",
-                            "gpt-4o", # Added OpenAI models
-                            "gpt-4o-mini" 
+                            ("gemini-2.0-flash (Recommend)", "gemini-2.0-flash"), 
+                            ("gemini-2.5-pro-exp-03-25", "gemini-2.5-pro-exp-03-25"), 
+                            ("gemini-2.0-flash-lite", "gemini-2.0-flash-lite"),
+                            ("gpt-4o", "gpt-4o"), 
+                            ("gpt-4o-mini", "gpt-4o-mini"),
+                            ("gpt-4.1-nano (Not Recommend)", "gpt-4.1-nano"),
+                            ("gpt-4.1-mini", "gpt-4.1-mini"),
+                            ("gpt-4.1", "gpt-4.1")
                         ], 
                         value="gemini-2.0-flash",
-                        info="選擇用於翻譯的模型。選擇 Gemini 或 OpenAI 模型需要對應的 API Key 在 .env 檔案中設定。" # Added info
+                        info="選擇用於翻譯的模型。選擇 Gemini 或 OpenAI 模型需要對應的 API Key 在 .env 檔案中設定。"
                     )
                 with gr.Accordion("進階設定", open=False):
                     translation_system_prompt = gr.Textbox(

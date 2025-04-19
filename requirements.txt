@@ -34,6 +34,7 @@ matplotlib-inline==0.1.7
 mdurl==0.1.2
 mistralai==1.6.0
 numpy==2.2.4
+openai==1.75.0
 orjson==3.10.16
 packaging==24.2
 pandas==2.2.3
