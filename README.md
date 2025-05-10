@@ -2,6 +2,8 @@
 
 [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/dodo13114arch/mistral-ocr-translator-demo)
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/dodo13114arch/mistralocr-pdf2md-translator)
+
 **[點此試用線上 Demo (Hugging Face Spaces)](https://huggingface.co/spaces/dodo13114arch/mistral-ocr-translator-demo)** 
 
 ---
