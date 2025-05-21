@@ -2,18 +2,18 @@
 # -*- coding: utf-8 -*-
 
 """
-PDF Mistral OCR 匯出工具
+PDF Mistral OCR Export Tool
 
-本程式可將 PDF 文件自動化轉換為 Markdown 格式，包含以下流程：
+This program can automatically convert PDF documents to Markdown format, including the following steps:
 
-1. 使用 Mistral OCR 模型辨識 PDF 內文與圖片
-2. 將辨識結果組成含圖片的 Markdown 檔
-3. 使用 Gemini 模型將英文內容翻譯為台灣繁體中文
-4. 匯出 Markdown 檔（原文版 + 翻譯版）與對應圖片
+1. Use the Mistral OCR model to recognize PDF content and images
+2. Combine the recognition results into a Markdown file with images
+3. Use the Gemini model to translate English content into Traditional Chinese (Taiwan)
+4. Export Markdown files (Original + Translated) and corresponding images
 
-新增功能：
-- 處理過程中的檢查點，可以保存中間結果
-- Gradio 介面，方便調整參數和選擇輸出格式
+New Features:
+- Checkpoints during the process to save intermediate results
+- Gradio interface for easily adjusting parameters and selecting output format
 """
 
 # Standard libraries
@@ -94,7 +94,7 @@ def insert_ocr_below_images(markdown_str, ocr_img_map, page_idx):
     for img_id, ocr_text in ocr_img_map.get(page_idx, {}).items():
         markdown_str = markdown_str.replace(
             f"![{img_id}]({img_id})",
-            f"![{img_id}]({img_id})\n\n> 📄 Image OCR Result：\n\n```json\n{ocr_text}\n```"
+            f"![{img_id}]({img_id})\n\n> 📄 Image OCR Result:\n\n```json\n{ocr_text}\n```"
         )
     return markdown_str
 
@@ -105,10 +105,10 @@ def save_images_and_replace_links(markdown_str, images_dict, page_idx, image_fol
 
     for i, (img_id, base64_str) in enumerate(images_dict.items()):
         img_bytes = base64.b64decode(base64_str.split(",")[-1])
-        # 使用相對路徑，僅保留資料夾名稱和檔案名稱
+        # Use relative path, only keep folder name and file name
         img_path = f"{os.path.basename(image_folder)}/page_{page_idx+1}_img_{i+1}.png"
-        
-        # 實際儲存的完整路徑
+
+        # Actual full path for saving
         full_img_path = os.path.join(image_folder, f"page_{page_idx+1}_img_{i+1}.png")
         with open(full_img_path, "wb") as f:
             f.write(img_bytes)
@@ -125,16 +125,16 @@ def save_images_and_replace_links(markdown_str, images_dict, page_idx, image_fol
 
 # Default translation system prompt
 DEFAULT_TRANSLATION_SYSTEM_INSTRUCTION = """
-你是一位專業的技術文件翻譯者。請將我提供的英文 Markdown 內容翻譯成**台灣繁體中文**。
+You are a professional technical document translator. Please translate the English Markdown content I provide into **Traditional Chinese (Taiwan)**.
 
-**核心要求：**
-1.  **翻譯所有英文文字：** 你的主要工作是翻譯內容中的英文敘述性文字（段落、列表、表格等）。
-2.  **保持結構與程式碼不變：**
-    * **不要**更改任何 Markdown 標記（如 `#`, `*`, `-`, `[]()`, `![]()`, ``` ```, ` `` `, `---`）。
-    * **不要**翻譯或修改程式碼區塊 (``` ... ```) 和行內程式碼 (`code`) 裡的任何內容。
-    * 若有 JSON，**不要**更改鍵（key），僅翻譯字串值（value）。
-3.  **處理專有名詞：** 對於普遍接受的英文技術術語、縮寫或專有名詞（例如 API, SDK, CPU, Google, Python 等），傾向於**保留英文原文**。但請確保翻譯了其他所有非術語的常規英文文字。
-4.  **直接輸出結果：** 請直接回傳翻譯後的完整 Markdown 文件，不要添加任何額外說明。
+**Core Requirements:**
+1.  **Translate all English text:** Your main task is to translate the descriptive English text within the content (paragraphs, lists, tables, etc.).
+2.  **Maintain structure and code unchanged:**
+    * **Do not** change any Markdown markup (e.g., `#`, `*`, `-`, `[]()`, `![]()`, ``` ```, ` `` `, `---`).
+    * **Do not** translate or modify any content within code blocks (``` ... ```) and inline code (`code`).
+    * If there is JSON, **Do not** change keys, only translate string values.
+3.  **Handle Proper Nouns:** For commonly accepted English technical terms, abbreviations, or proper nouns (e.g., API, SDK, CPU, Google, Python, etc.), prioritize **keeping the original English**. But make sure to translate all other non-technical regular English text.
+4.  **Direct Output:** Please directly return the complete translated Markdown document without any additional explanations.
 """
 
 # Updated signature to accept openai_client
@@ -147,7 +147,7 @@ def translate_markdown_pages(pages, gemini_client, openai_client, model="gemini-
     total_pages = len(pages) # Get total pages for progress
 
     for idx, page in enumerate(pages):
-        progress_message = f"🔁 正在翻譯第 {idx+1} / {total_pages} 頁..."
+        progress_message = f"🔁 Translating page {idx+1} / {total_pages}..."
         print(progress_message) # Print to console
         yield progress_message # Yield progress string for Gradio log
 
@@ -169,7 +169,7 @@ def translate_markdown_pages(pages, gemini_client, openai_client, model="gemini-
                         {"role": "system", "content": system_instruction},
                         {"role": "user", "content": page} 
                     ]
-                    
+
                     response = openai_client.chat.completions.create(
                         model=model,
                         messages=messages,
@@ -177,7 +177,7 @@ def translate_markdown_pages(pages, gemini_client, openai_client, model="gemini-
                     )
                     translated_md = response.choices[0].message.content.strip()
                 except Exception as openai_e:
-                    error_msg = f"⚠️ OpenAI 翻譯第 {idx+1} / {total_pages} 頁失敗：{openai_e}"
+                    error_msg = f"⚠️ OpenAI translation failed for page {idx+1} / {total_pages}: {openai_e}"
                     print(error_msg)
                     yield error_msg # Yield error string to Gradio log
                     yield f"--- ERROR: OpenAI Translation Failed for Page {idx+1} ---\n\n{page}"
@@ -194,7 +194,7 @@ def translate_markdown_pages(pages, gemini_client, openai_client, model="gemini-
                     contents=page
                 )
                 translated_md = response.text.strip()
-            
+
             else:
                 # --- Unsupported Model ---
                 error_msg = f"⚠️ Unsupported translation model: {model}. Skipping page {idx+1}."
@@ -209,13 +209,13 @@ def translate_markdown_pages(pages, gemini_client, openai_client, model="gemini-
             yield translated_md # Yield the actual translated page content
 
         except Exception as e:
-            error_msg = f"⚠️ 翻譯第 {idx+1} / {total_pages} 頁失敗：{e}"
+            error_msg = f"⚠️ Translation failed for page {idx+1} / {total_pages}: {e}"
             print(error_msg)
             yield error_msg # Yield error string to Gradio log
             # Yield error marker instead of translated content
             yield f"--- ERROR: Translation Failed for Page {idx+1} ---\n\n{page}"
 
-    final_message = f"✅ 翻譯完成 {total_pages} 頁。"
+    final_message = f"✅ Translation completed for {total_pages} pages."
     yield final_message # Yield final translation status string
     print(final_message) # Print final translation status
     # No return needed for a generator yielding results
@@ -225,7 +225,7 @@ def translate_markdown_pages(pages, gemini_client, openai_client, model="gemini-
 def process_pdf_with_mistral_ocr(pdf_path, client, model="mistral-ocr-latest"):
     """Process PDF with Mistral OCR."""
     pdf_file = Path(pdf_path)
-    
+
     # Upload to mistral
     uploaded_file = client.files.upload(
         file={
@@ -234,27 +234,27 @@ def process_pdf_with_mistral_ocr(pdf_path, client, model="mistral-ocr-latest"):
         },
         purpose="ocr"
     )
-    
+
     signed_url = client.files.get_signed_url(file_id=uploaded_file.id, expiry=1)
-    
+
     # OCR analyze PDF
     pdf_response = client.ocr.process(
         document=DocumentURLChunk(document_url=signed_url.url),
         model=model,
         include_image_base64=True
     )
-    
+
     return pdf_response
 
 # Updated function signature to include structure_text_only
 def process_images_with_ocr(pdf_response, mistral_client, gemini_client, openai_client, structure_model="pixtral-12b-latest", structure_text_only=False):
     """Process images from PDF pages with OCR and structure using the specified model."""
     image_ocr_results = {}
-    
+
     for page_idx, page in enumerate(pdf_response.pages):
         for i, img in enumerate(page.images):
             base64_data_url = img.image_base64
-            
+
             # Extract raw base64 data for Gemini
             try:
                 # Handle potential variations in data URL prefix
@@ -368,7 +368,7 @@ Return ONLY the JSON object, without any surrounding text or markdown formatting
 
                     # Call Gemini API - Corrected to use gemini_client.models.generate_content
                     print(f"    - Sending request to Gemini API ({structure_model})...") # Added print statement
-                    
+
                     try:
                         response = gemini_client.models.generate_content(
                             model=structure_model, 
@@ -379,7 +379,7 @@ Return ONLY the JSON object, without any surrounding text or markdown formatting
                          # Fallback or re-raise
                          pretty_text = json.dumps({"error": "Failed to call Gemini API", "details": str(api_e)}, indent=2, ensure_ascii=False)
                          return pretty_text # Exit run_ocr_and_parse for this image
-                    
+
                     # Extract and clean the JSON response
                     raw_json_text = response.text.strip()
                     # Remove potential markdown code fences
@@ -473,7 +473,7 @@ Return ONLY the JSON object, without any surrounding text or markdown formatting
                             # max_tokens=1000, 
                             temperature=0.1 # Lower temperature for deterministic JSON
                         )
-                        
+
                         raw_json_text = response.choices[0].message.content.strip()
                         # Clean potential markdown fences
                         if raw_json_text.startswith("```json"):
@@ -494,14 +494,14 @@ Return ONLY the JSON object, without any surrounding text or markdown formatting
                     except Exception as api_e:
                         print(f"    - ⚠️ Error calling OpenAI API: {api_e}")
                         pretty_text = json.dumps({"error": "Failed to call OpenAI API", "details": str(api_e)}, indent=2, ensure_ascii=False)
-                
+
                 else: # Final attempt to correct indentation for the final else
                     print(f"    - ⚠️ Unsupported structure model: {structure_model}. Skipping structuring.")
                     # Fallback: return the basic OCR markdown wrapped in JSON
                     pretty_text = json.dumps({"unstructured_ocr": image_ocr_markdown}, indent=2, ensure_ascii=False)
 
                 return pretty_text
-            
+
             try:
                 # Pass the actual structure model name to the inner function if needed,
                 # or rely on the outer scope variable 'structure_model' as done here.
@@ -509,13 +509,13 @@ Return ONLY the JSON object, without any surrounding text or markdown formatting
                 image_ocr_results[(page_idx, img.id)] = result
             except Exception as e:
                 print(f"❌ Failed at page {page_idx+1}, image {i+1}: {e}")
-    
+
     # Reorganize results by page
     ocr_by_page = {}
     for (page_idx, img_id), ocr_text in image_ocr_results.items():
             ocr_by_page.setdefault(page_idx, {})[img_id] = ocr_text
             print(f"  - Successfully processed page {page_idx+1}, image {i+1} with {structure_model}.")
-    
+
     return ocr_by_page
 
 # ===== Checkpoint Functions =====
@@ -524,7 +524,7 @@ def save_checkpoint(data, filename, console_output=None):
     """Save data to a checkpoint file."""
     with open(filename, 'wb') as f:
         pickle.dump(data, f)
-    message = f"✅ 已儲存檢查點：{filename}"
+    message = f"✅ Checkpoint saved: {filename}"
     print(message) # Corrected indentation
     # Removed console_output append
     return message # Return message
@@ -534,7 +534,7 @@ def load_checkpoint(filename, console_output=None):
     if os.path.exists(filename):
         with open(filename, 'rb') as f:
             data = pickle.load(f)
-        message = f"✅ 已載入檢查點：{filename}"
+        message = f"✅ Checkpoint loaded: {filename}"
         print(message)
         # Removed console_output append
         return data, message # Return message
@@ -561,13 +561,13 @@ def process_pdf_to_markdown(
 ):
     """Main function to process PDF to markdown with translation. Yields log messages."""
     if output_formats_selected is None:
-        output_formats_selected = ["中文翻譯", "英文原文"] # Default if not provided
+        output_formats_selected = ["Traditional Chinese Translation", "English Original"] # Default if not provided
 
     pdf_file = Path(pdf_path)
     filename_stem = pdf_file.stem
     # Sanitize the filename stem here as well
     sanitized_stem = filename_stem.replace(" ", "_")
-    print(f"--- 開始處理檔案: {pdf_file.name} (Sanitized Stem: {sanitized_stem}) ---") # Console print
+    print(f"--- Starting to process file: {pdf_file.name} (Sanitized Stem: {sanitized_stem}) ---") # Console print
 
     # Output and checkpoint directories are now expected to be set by the caller (Gradio function)
     # os.makedirs(output_dir, exist_ok=True) # Ensure caller created it
@@ -587,14 +587,14 @@ def process_pdf_to_markdown(
         if load_msg: yield load_msg # Yield message
 
     if pdf_response is None:
-        msg = "🔍 正在處理 PDF OCR..."
+        msg = "🔍 Processing PDF OCR..."
         yield msg
         print(msg) # Console print
         pdf_response = process_pdf_with_mistral_ocr(pdf_path, mistral_client, model=ocr_model)
         save_msg = save_checkpoint(pdf_response, pdf_ocr_checkpoint) # save_checkpoint already prints
         if save_msg: yield save_msg # Yield message
     else:
-        print("ℹ️ 使用現有 PDF OCR 檢查點。")
+        print("ℹ️ Using existing PDF OCR checkpoint.")
 
     # Step 2: Process images with OCR (with checkpoint)
     ocr_by_page = {}
@@ -605,7 +605,7 @@ def process_pdf_to_markdown(
             if load_msg: yield load_msg # Yield message
 
         if ocr_by_page is None or not ocr_by_page: # Check if empty dict from checkpoint or explicitly empty
-            msg = f"🖼️ 正在使用 '{structure_model}' 處理圖片 OCR 與結構化..."
+            msg = f"🖼️ Processing image OCR and structuring using '{structure_model}'..."
             yield msg
             print(msg) # Console print
             # Pass gemini_client and correct structure_model parameter name
@@ -620,9 +620,9 @@ def process_pdf_to_markdown(
             save_msg = save_checkpoint(ocr_by_page, image_ocr_checkpoint) # save_checkpoint already prints
             if save_msg: yield save_msg # Yield message
         else:
-            print("ℹ️ 使用現有圖片 OCR 檢查點。")
+            print("ℹ️ Using existing image OCR checkpoint.")
     else:
-        print("ℹ️ 跳過圖片 OCR 處理。") # process_images was False
+        print("ℹ️ Skipping image OCR processing.") # process_images was False
 
     # Step 3: Create or load RAW page data (markdown text + image dicts)
     raw_page_data = None # List of tuples: (raw_markdown_text, images_dict)
@@ -633,7 +633,7 @@ def process_pdf_to_markdown(
         if load_msg: yield load_msg
 
     if raw_page_data is None:
-        msg = "📝 正在建立原始頁面資料 (Markdown + 圖片資訊)..."
+        msg = "📝 Creating raw page data (Markdown + image info)..."
         yield msg
         print(msg)
         raw_page_data = []
@@ -646,12 +646,12 @@ def process_pdf_to_markdown(
         save_msg = save_checkpoint(raw_page_data, raw_page_data_checkpoint)
         if save_msg: yield save_msg
     else:
-        print("ℹ️ 使用現有原始頁面資料檢查點。")
+        print("ℹ️ Using existing raw page data checkpoint.")
 
     # Step 3.5: Conditionally insert image OCR results based on CURRENT UI selection
     pages_after_ocr_insertion = [] # List to hold markdown strings after potential OCR insertion
     if process_images and ocr_by_page: # Check if UI wants OCR AND if OCR results exist
-        msg = "✍️ 根據目前設定，正在將圖片 OCR 結果插入 Markdown..."
+        msg = "✍️ Inserting image OCR results into Markdown based on current settings..."
         yield msg
         print(msg)
         for page_idx, (raw_md, _) in enumerate(raw_page_data): # Iterate through raw data
@@ -661,11 +661,11 @@ def process_pdf_to_markdown(
     else:
         # If not inserting OCR, just use the raw markdown text
         if process_images and not ocr_by_page:
-             msg = "ℹ️ 已勾選處理圖片 OCR，但無圖片 OCR 結果可插入 (可能需要重新執行圖片 OCR)。"
+             msg = "ℹ️ Image OCR processing was selected, but no image OCR results are available for insertion (may need to re-run image OCR)."
              yield msg
              print(msg)
         elif not process_images:
-             msg = "ℹ️ 未勾選處理圖片 OCR，跳過插入步驟。"
+             msg = "ℹ️ Image OCR processing not selected, skipping insertion step."
              yield msg
              print(msg)
         # Use the raw markdown text directly
@@ -675,7 +675,7 @@ def process_pdf_to_markdown(
     final_markdown_pages = [] # This list will have final file paths as links
     # Use sanitized_stem for image folder name
     image_folder_name = os.path.join(output_dir, f"images_{sanitized_stem}") 
-    msg = f"🖼️ 正在儲存圖片並更新 Markdown 連結至 '{os.path.basename(image_folder_name)}'..."
+    msg = f"🖼️ Saving images and updating Markdown links to '{os.path.basename(image_folder_name)}'..."
     yield msg
     print(msg)
     # Iterate using the pages_after_ocr_insertion list and the original image dicts from raw_page_data
@@ -686,7 +686,7 @@ def process_pdf_to_markdown(
 
     # Step 4: Translate the final markdown pages
     translated_markdown_pages = None # Initialize
-    need_translation = "中文翻譯" in output_formats_selected
+    need_translation = "Traditional Chinese Translation" in output_formats_selected
     if need_translation:
         # Translate the final list with correct image links, passing both clients
         translation_generator = translate_markdown_pages(
@@ -707,8 +707,8 @@ def process_pdf_to_markdown(
                  # Assume it's translated content or an error marker page
                  translated_markdown_pages.append(item)
     else:
-        yield "ℹ️ 跳過翻譯步驟 (未勾選中文翻譯)。"
-        print("ℹ️ 跳過翻譯步驟 (未勾選中文翻譯)。")
+        yield "ℹ️ Skipping translation step (Traditional Chinese output not selected)."
+        print("ℹ️ Skipping translation step (Traditional Chinese output not selected).")
         translated_markdown_pages = None # Ensure it's None if skipped
 
     # Step 5: Combine pages into complete markdown strings
@@ -718,43 +718,43 @@ def process_pdf_to_markdown(
 
     # Step 6: Save files based on selection - Use sanitized_stem
     saved_files = {}
-    if "英文原文" in output_formats_selected:
+    if "English Original" in output_formats_selected:
         original_md_name = os.path.join(output_dir, f"{sanitized_stem}_original.md")
         try:
             with open(original_md_name, "w", encoding="utf-8") as f:
                 f.write(final_markdown_original)
-            msg = f"✅ 已儲存原文版：{original_md_name}"
+            msg = f"✅ Original version saved: {original_md_name}"
             yield msg
             print(msg) # Console print
             saved_files["original_file"] = original_md_name
         except Exception as e:
-            msg = f"❌ 儲存原文版失敗: {e}"
+            msg = f"❌ Failed to save original version: {e}"
             yield msg
             print(msg)
 
-    if "中文翻譯" in output_formats_selected and final_markdown_translated:
+    if "Traditional Chinese Translation" in output_formats_selected and final_markdown_translated:
         translated_md_name = os.path.join(output_dir, f"{sanitized_stem}_translated.md")
         try:
             with open(translated_md_name, "w", encoding="utf-8") as f:
                 f.write(final_markdown_translated)
-            msg = f"✅ 已儲存翻譯版：{translated_md_name}"
+            msg = f"✅ Translated version saved: {translated_md_name}"
             yield msg
             print(msg) # Console print
             saved_files["translated_file"] = translated_md_name
         except Exception as e:
-            msg = f"❌ 儲存翻譯版失敗: {e}"
+            msg = f"❌ Failed to save translated version: {e}"
             yield msg
             print(msg)
 
     # Always report image folder path if images were processed/saved - Use sanitized_stem
     if process_images:
         image_folder_name = os.path.join(output_dir, f"images_{sanitized_stem}")
-        msg = f"✅ 圖片資料夾：{image_folder_name}"
+        msg = f"✅ Image folder: {image_folder_name}"
         yield msg
         print(msg) # Console print
         saved_files["image_folder"] = image_folder_name
 
-    print(f"--- 完成處理檔案: {pdf_file.name} ---") # Console print
+    print(f"--- Finished processing file: {pdf_file.name} ---") # Console print
 
     # Return the final result dictionary for Gradio UI update
     yield {
@@ -768,18 +768,18 @@ def process_pdf_to_markdown(
 
 def create_gradio_interface():
     """Create a Gradio interface for the PDF to Markdown tool."""
-    
+
     # Initialize clients
     load_dotenv()
-    
+
     mistral_api_key = os.getenv("MISTRAL_API_KEY")
     if not mistral_api_key:
-        raise ValueError("❌ 找不到 MISTRAL_API_KEY，請檢查 .env 是否正確設置。")
+        raise ValueError("❌ MISTRAL_API_KEY not found. Please check if .env is set up correctly.")
     mistral_client = Mistral(api_key=mistral_api_key)
-    
+
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     if not gemini_api_key:
-        raise ValueError("❌ 未在 .env 找到 GEMINI_API_KEY，請確認已正確設置。")
+        raise ValueError("❌ GEMINI_API_KEY not found in .env. Please ensure it is set up correctly.")
     gemini_client = genai.Client(api_key=gemini_api_key)
 
     # Initialize OpenAI client if library is available
@@ -787,17 +787,17 @@ def create_gradio_interface():
     if OpenAI:
         openai_api_key = os.getenv("OPENAI_API_KEY")
         if not openai_api_key:
-            print("⚠️ 未在 .env 找到 OPENAI_API_KEY。若要使用 OpenAI 模型，請設置此環境變數。")
+            print("⚠️ OPENAI_API_KEY not found in .env. Please set this environment variable if you want to use OpenAI models.")
             # Don't raise error, just disable OpenAI models if key is missing
         else:
             try:
                 openai_client = OpenAI(api_key=openai_api_key)
                 print("✅ OpenAI client initialized.")
             except Exception as e:
-                print(f"❌ 初始化 OpenAI client 失敗: {e}")
+                print(f"❌ Failed to initialize OpenAI client: {e}")
                 openai_client = None # Ensure client is None if init fails
     else:
-        print("ℹ️ OpenAI library 未安裝，無法使用 OpenAI 模型。")
+        print("ℹ️ OpenAI library not installed, cannot use OpenAI models.")
 
     # Define processing function for Gradio
     def process_pdf(
@@ -814,30 +814,30 @@ def create_gradio_interface():
     ):
         # Accumulate logs for console output
         log_accumulator = ""
-        print("\n--- Gradio 處理請求開始 ---") # Console print
+        print("\n--- Gradio processing request started ---") # Console print
         # Placeholder for final markdown output
-        final_result_content = "⏳ 等待處理結果..."
+        final_result_content = "⏳ Waiting for processing result..."
 
         # --- Early Exit Checks ---
         if pdf_file is None:
-            log_accumulator += "❌ 請先上傳 PDF 檔案\n"
-            print("❌ 錯誤：未上傳 PDF 檔案") # Console print
+            log_accumulator += "❌ Please upload a PDF file first\n"
+            print("❌ Error: No PDF file uploaded") # Console print
             # Final yield for error
-            yield "錯誤：未上傳 PDF 檔案", log_accumulator
+            yield "Error: No PDF file uploaded", log_accumulator
             return # Stop execution
 
         if not output_formats_selected:
-             log_accumulator += "❌ 請至少選擇一種輸出格式（中文翻譯 或 英文原文）\n"
-             print("❌ 錯誤：未選擇輸出格式") # Console print
-             yield "錯誤：未選擇輸出格式", log_accumulator
+             log_accumulator += "❌ Please select at least one output format (Traditional Chinese Translation or English Original)\n"
+             print("❌ Error: No output format selected") # Console print
+             yield "Error: No output format selected", log_accumulator
              return # Stop execution
 
         pdf_path_obj = Path(pdf_file) # Use Path object for consistency
         filename_stem = pdf_path_obj.stem
         # Sanitize the filename stem (replace spaces with underscores)
         sanitized_stem = filename_stem.replace(" ", "_")
-        print(f"收到檔案: {pdf_path_obj.name} (Sanitized Stem: {sanitized_stem})") # Console print
-        print(f"選擇的輸出格式: {output_formats_selected}") # Console print
+        print(f"Received file: {pdf_path_obj.name} (Sanitized Stem: {sanitized_stem})") # Console print
+        print(f"Selected output format: {output_formats_selected}") # Console print
 
         # --- Output Directory Logic ---
         default_output_parent = os.path.join(os.path.expanduser("~"), "Desktop")
@@ -854,32 +854,32 @@ def create_gradio_interface():
             os.makedirs(output_dir, exist_ok=True)
             os.makedirs(checkpoint_dir, exist_ok=True)
         except OSError as e:
-            error_msg = f"❌ 無法建立目錄 '{output_dir}' 或 '{checkpoint_dir}': {e}"
+            error_msg = f"❌ Cannot create directory '{output_dir}' or '{checkpoint_dir}': {e}"
             log_accumulator += f"{error_msg}\n"
-            print(f"❌ 錯誤：{error_msg}") # Console print
+            print(f"❌ Error: {error_msg}") # Console print
             # Final yield for error
-            yield f"錯誤：{error_msg}", log_accumulator
+            yield f"Error: {error_msg}", log_accumulator
             return # Stop execution
         # --- End Output Directory Logic ---
 
         # --- Initial Log Messages ---
         # Print statements added within the block
         # Use yield with gr.update() for intermediate console updates
-        log_accumulator += f"🚀 開始處理 PDF: {pdf_path_obj.name}\n"
+        log_accumulator += f"🚀 Starting PDF processing: {pdf_path_obj.name}\n"
         yield gr.update(), log_accumulator # Update only console
-        log_accumulator += f"📂 輸出目錄: {output_dir}\n"
+        log_accumulator += f"📂 Output directory: {output_dir}\n"
         yield gr.update(), log_accumulator # Update only console
-        log_accumulator += f"💾 檢查點目錄: {checkpoint_dir}\n"
+        log_accumulator += f"💾 Checkpoint directory: {checkpoint_dir}\n"
         yield gr.update(), log_accumulator # Update only console
 
         # Determine if translation is needed based on CheckboxGroup selection
         # The 'translate' checkbox is now less relevant, primary control is output_formats_selected
-        need_translation_for_processing = "中文翻譯" in output_formats_selected
-        log_accumulator += "✅ 將產生中文翻譯\n" if need_translation_for_processing else "ℹ️ 不產生中文翻譯 (未勾選)\n"
+        need_translation_for_processing = "Traditional Chinese Translation" in output_formats_selected
+        log_accumulator += "✅ Will generate Traditional Chinese translation\n" if need_translation_for_processing else "ℹ️ Will not generate Traditional Chinese translation (not selected)\n"
         yield gr.update(), log_accumulator # Update only console
-        log_accumulator += "✅ 使用現有檢查點（如果存在）\n" if use_existing_checkpoints else "🔄 重新處理所有步驟（不使用現有檢查點）\n"
+        log_accumulator += "✅ Using existing checkpoints (if available)\n" if use_existing_checkpoints else "🔄 Re-processing all steps (not using existing checkpoints)\n"
         yield gr.update(), log_accumulator # Update only console
-        print(f"需要翻譯: {need_translation_for_processing}, 使用檢查點: {use_existing_checkpoints}") # Console print
+        print(f"Needs translation: {need_translation_for_processing}, Using checkpoints: {use_existing_checkpoints}") # Console print
 
         # --- Main Processing ---
         try:
@@ -917,9 +917,9 @@ def create_gradio_interface():
             # --- Process Final Result for UI ---
             # This part runs after the processor generator is exhausted
             if result_data:
-                final_log_message = "✅ 處理完成！"
+                final_log_message = "✅ Processing complete!"
                 log_accumulator += f"{final_log_message}\n"
-                print(f"--- Gradio 處理請求完成 ---") # Console print
+                print(f"--- Gradio processing request completed ---") # Console print
 
                 # Determine final_result_content based on selections in result_data
                 selected_formats = result_data.get("output_formats_selected", [])
@@ -927,89 +927,89 @@ def create_gradio_interface():
                 translated_content = result_data.get("translated_content")
 
                 content_parts = []
-                if "英文原文" in selected_formats and original_content:
-                    content_parts.append(f"# 英文原文\n\n{original_content}")
-                if "中文翻譯" in selected_formats and translated_content:
-                     content_parts.append(f"# 中文翻譯\n\n{translated_content}")
+                if "English Original" in selected_formats and original_content:
+                    content_parts.append(f"# English Original\n\n{original_content}")
+                if "Traditional Chinese Translation" in selected_formats and translated_content:
+                     content_parts.append(f"# Traditional Chinese Translation\n\n{translated_content}")
 
                 if content_parts:
                     final_result_content = "\n\n---\n\n".join(content_parts)
                 else:
-                    final_result_content = "ℹ️ 未選擇輸出格式或無內容可顯示。"
+                    final_result_content = "ℹ️ No output format selected or no content to display."
 
             else:
-                 final_log_message = "⚠️ 處理完成，但未收到預期的結果字典。"
+                 final_log_message = "⚠️ Processing complete, but did not receive the expected result dictionary."
                  log_accumulator += f"{final_log_message}\n"
-                 print(f"⚠️ 警告：{final_log_message}") # Console print
-                 final_result_content = "❌ 處理未完成或未產生預期輸出。"
+                 print(f"⚠️ Warning: {final_log_message}") # Console print
+                 final_result_content = "❌ Processing incomplete or did not produce expected output."
 
             # Final yield: provide values for BOTH outputs
             yield final_result_content, log_accumulator
 
         except Exception as e:
-            error_message = f"❌ Gradio 處理過程中發生未預期錯誤: {str(e)}"
+            error_message = f"❌ An unexpected error occurred during Gradio processing: {str(e)}"
             log_accumulator += f"{error_message}\n"
-            print(f"❌ 嚴重錯誤：{error_message}") # Console print
+            print(f"❌ Severe Error: {error_message}") # Console print
             import traceback
             traceback.print_exc() # Print full traceback to console
             # Final yield in case of error: provide values for BOTH outputs
             yield error_message, log_accumulator
 
     # Create Gradio interface
-    with gr.Blocks(title="Mistral OCR 翻譯工具") as demo: # Updated title slightly
-        gr.Markdown("# Mistral OCR 翻譯PDF轉Markdown格式工具")
-        gr.Markdown("將 PDF 文件轉為 Markdown 格式，支援圖片 OCR 和英文到繁體中文翻譯，使用 **Mistral**、**Gemini** 和 **OpenAI** 模型。") # Added OpenAI
-        
+    with gr.Blocks(title="Mistral OCR Translation Tool") as demo: # Updated title slightly
+        gr.Markdown("# Mistral OCR PDF to Markdown Translation Tool")
+        gr.Markdown("Convert PDF documents to Markdown format, supporting image OCR and English to Traditional Chinese translation, using **Mistral**, **Gemini**, and **OpenAI** models.") # Added OpenAI
+
         with gr.Row():
             with gr.Column(scale=1):
-                pdf_file = gr.File(label="上傳 PDF 檔案", file_types=[".pdf"])
-                
-                with gr.Accordion("基本設定", open=True):
+                pdf_file = gr.File(label="Upload PDF File", file_types=[".pdf"])
+
+                with gr.Accordion("Basic Settings", open=True):
                     # Define default path for placeholder clarity
-                    default_output_path_display = os.path.join("桌面", "MistralOCR_Output") # Simplified for display
+                    default_output_path_display = os.path.join("Desktop", "MistralOCR_Output") # Simplified for display
                     output_dir = gr.Textbox(
-                        label="輸出目錄 (請貼上完整路徑)",
-                        placeholder=f"留空預設儲存至：{default_output_path_display}",
-                        info="將所有輸出檔案 (Markdown, 圖片, 檢查點) 儲存於此目錄。",
+                        label="Output Directory (Please paste the full path)",
+                        placeholder=f"Leave blank to save to default: {default_output_path_display}",
+                        info="Saves all output files (Markdown, images, checkpoints) to this directory.",
                         value="" # Default logic remains in process_pdf
                     )
 
                     use_existing_checkpoints = gr.Checkbox(
-                        label="使用現有檢查點（如果存在）", 
+                        label="Use Existing Checkpoints (If available)", 
                         value=True,
-                        info="啟用後，如果檢查點存在，將跳過已完成的步驟。"
+                        info="If enabled, steps for which a checkpoint exists will be skipped."
                     )
 
                     output_format = gr.CheckboxGroup(
-                        label="輸出格式 (可多選)",
-                        choices=["中文翻譯", "英文原文"],
-                        value=["中文翻譯", "英文原文"], # Default to both
-                        info="選擇您需要儲存的 Markdown 檔案格式。"
+                        label="Output Format (Multiple selection allowed)",
+                        choices=["Traditional Chinese Translation", "English Original"],
+                        value=["Traditional Chinese Translation", "English Original"], # Default to both
+                        info="Select the Markdown file formats you want to save."
                     )
 
-                with gr.Accordion("處理選項", open=True):
+                with gr.Accordion("Processing Options", open=True):
                     process_images = gr.Checkbox(
-                        label="處理圖片 OCR", 
+                        label="Process Image OCR", 
                         value=True,
-                        info="啟用後，將對 PDF 中的圖片進行 OCR 辨識"
+                        info="If enabled, OCR recognition will be performed on images within the PDF."
                     )
-                    
+
                     # The 'translate' checkbox is now redundant as format selection controls translation
                     # We can hide or remove it. Let's comment it out for now.
                     # translate = gr.Checkbox(
-                    #     label="翻譯成中文",
+                    #     label="Translate to Chinese",
                     #     value=True,
-                    #     info="啟用後，將英文內容翻譯為中文 (若輸出格式已選中文翻譯則自動啟用)"
+                    #     info="If enabled, translates English content to Chinese (automatically enabled if Traditional Chinese output is selected)."
                     # )
 
-                with gr.Accordion("模型設定", open=False):
+                with gr.Accordion("Model Settings", open=False):
                     ocr_model = gr.Dropdown(
-                        label="OCR 模型", 
+                        label="OCR Model", 
                         choices=["mistral-ocr-latest"], 
                         value="mistral-ocr-latest"
                     )
                     structure_model = gr.Dropdown(
-                        label="結構化模型 (用於圖片 OCR)", 
+                        label="Structuring Model (for Image OCR)", 
                         choices=[
                             ("pixtral-12b-latest (Recommend)", "pixtral-12b-latest"),
                             ("gemini-2.0-flash (Recommend)", "gemini-2.0-flash"),
@@ -1020,15 +1020,15 @@ def create_gradio_interface():
                             ("gpt-4.1", "gpt-4.1")
                         ], 
                         value="gemini-2.0-flash",
-                        info="選擇用於結構化圖片 OCR 結果的模型。選擇 Gemini 或 OpenAI 模型需要對應的 API Key 在 .env 檔案中設定。"
+                        info="Select the model used for structuring image OCR results. Using Gemini or OpenAI models requires the corresponding API Key to be set in the .env file."
                     )
                     structure_text_only = gr.Checkbox(
-                        label="僅用文字進行結構化 (節省 Token)",
+                        label="Structure using text only (Save Tokens)",
                         value=False,
-                        info="勾選後，僅將圖片的初步 OCR 文字傳送給 Gemini 或 OpenAI 進行結構化，不傳送圖片本身。對 Pixtral 無效。⚠️注意：缺少圖片視覺資訊可能導致結構化效果不佳，建議僅在 OCR 文字已足夠清晰時使用。"
+                        info="If checked, only the preliminary OCR text from images will be sent to Gemini or OpenAI for structuring, not the image itself. This is not effective for Pixtral. ⚠️Note: Lack of visual information from the image may lead to poorer structuring results. It is recommended to use this only when the OCR text is already sufficiently clear."
                     )
                     translation_model = gr.Dropdown(
-                        label="翻譯模型", 
+                        label="Translation Model", 
                         choices=[
                             ("gemini-2.0-flash (Recommend)", "gemini-2.0-flash"), 
                             ("gemini-2.5-pro-exp-03-25", "gemini-2.5-pro-exp-03-25"), 
@@ -1040,76 +1040,76 @@ def create_gradio_interface():
                             ("gpt-4.1", "gpt-4.1")
                         ], 
                         value="gemini-2.0-flash",
-                        info="選擇用於翻譯的模型。選擇 Gemini 或 OpenAI 模型需要對應的 API Key 在 .env 檔案中設定。"
+                        info="Select the model used for translation. Using Gemini or OpenAI models requires the corresponding API Key to be set in the .env file."
                     )
-                with gr.Accordion("進階設定", open=False):
+                with gr.Accordion("Advanced Settings", open=False):
                     translation_system_prompt = gr.Textbox(
-                        label="翻譯系統提示詞", 
+                        label="Translation System Prompt", 
                         value=DEFAULT_TRANSLATION_SYSTEM_INSTRUCTION,
                         lines=10
                     )
-                
-                process_button = gr.Button("開始處理", variant="primary")
-            
+
+                process_button = gr.Button("Start Processing", variant="primary")
+
             with gr.Column(scale=2):
-                with gr.Tab("輸出結果"):
-                    output = gr.Markdown(label="輸出結果")
-                
-                with gr.Tab("處理日誌"):
+                with gr.Tab("Output Result"):
+                    output = gr.Markdown(label="Output Result")
+
+                with gr.Tab("Processing Log"):
                     console_output = gr.Textbox(
-                        label="處理進度", 
+                        label="Processing Progress", 
                         lines=20,
                         max_lines=50,
                         interactive=False,
                         autoscroll=True # Add autoscroll
                     )
 
-                with gr.Tab("使用說明"):  
-                    
+                with gr.Tab("Instructions"):  
+
                     gr.Markdown("""
-                        # 使用說明（本地版本）
+                        # Instructions (Local Version)
 
-                        1. 上傳 PDF 檔案（可拖曳或點擊上傳）  
-                        2. 基本設定：  
-                        - 指定輸出目錄（可選，留空使用預設目錄）  
-                        - 選擇是否使用現有檢查點（如果存在）  
-                        - 選擇輸出格式（中文翻譯、英文原文）  
-                        3. 處理選項：  
-                        - 選擇是否處理圖片 OCR  
-                        - 選擇是否翻譯成中文（若輸出格式僅選「英文原文」則略過翻譯）  
-                        4. 模型與進階設定（可選）：  
-                        - 選擇 OCR、結構化、翻譯模型  
-                        - 修改翻譯提示詞（若需其他語言）  
-                        5. 點擊「開始處理」按鈕  
-                        6. 處理期間可於「處理日誌」查看進度  
-                        7. 完成後，結果將顯示於「輸出結果」頁，並自動儲存至指定目錄  
+                        1. Upload PDF file (drag and drop or click to upload)  
+                        2. Basic Settings:  
+                        - Specify output directory (optional, leave blank for default directory)  
+                        - Choose whether to use existing checkpoints (if available)  
+                        - Select output format (Traditional Chinese Translation, English Original)  
+                        3. Processing Options:  
+                        - Choose whether to process image OCR  
+                        - Choose whether to translate to Chinese (translation is skipped if only "English Original" is selected as output format)  
+                        4. Model and Advanced Settings (Optional):  
+                        - Select OCR, structuring, and translation models  
+                        - Modify the translation prompt (if other languages are needed)  
+                        5. Click the "Start Processing" button  
+                        6. Processing progress can be viewed in the "Processing Log"  
+                        7. After completion, the result will be displayed in the "Output Result" tab and automatically saved to the specified directory  
 
-                        ## API 金鑰設定 (.env)
+                        ## API Key Configuration (.env)
 
-                        請於專案根目錄建立 `.env` 檔案，填入以下內容：
+                        Please create a `.env` file in the project root directory and fill in the following:
 
                         ```
                         MISTRAL_API_KEY=your_mistral_key
-                        GEMINI_API_KEY=your_gemini_key       # 可選
-                        OPENAI_API_KEY=your_openai_key       # 可選
+                        GEMINI_API_KEY=your_gemini_key       # Optional
+                        OPENAI_API_KEY=your_openai_key       # Optional
                         ```
 
-                        ## 檢查點說明
+                        ## Checkpoint Explanation
 
-                        - **PDF OCR 檢查點**：儲存 PDF 的文字識別結果  
-                        - **圖片 OCR 檢查點**：儲存圖片區塊的 OCR 結果  
-                        - **Markdown 檢查點**：儲存已產出的 Markdown 檔案  
-                        可取消勾選「使用現有檢查點」重新處理，或手動刪除 `checkpoints/` 資料夾。
+                        - **PDF OCR Checkpoint**: Saves the text recognition result of the PDF  
+                        - **Image OCR Checkpoint**: Saves the OCR result of image blocks  
+                        - **Markdown Checkpoint**: Saves the generated Markdown file  
+                        You can uncheck "Use existing checkpoints" to re-process, or manually delete the `checkpoints/` folder.
 
-                        ## 輸出檔案
+                        ## Output Files
 
-                        - `[檔名]_translated.md`：翻譯後的 Markdown 檔案  
-                        - `[檔名]_original.md`：原始英文 Markdown 檔案  
-                        - `images_[檔名]/`：提取圖片資料夾  
-                        - `checkpoints/`：處理過程中的中繼檔案  
+                        - `[filename]_translated.md`: Translated Markdown file  
+                        - `[filename]_original.md`: Original English Markdown file  
+                        - `images_[filename]/`: Extracted image folder  
+                        - `checkpoints/`: Intermediate files during the process  
                     """)
 
-                
+
 
         # Define outputs for the click event
         # The order matches how Gradio handles generators:
@@ -1146,18 +1146,18 @@ def create_gradio_interface():
         gr.Markdown(""" 
             ---
 
-            **免責聲明**  
-            本工具僅供學習與研究用途，整合 Mistral、Google Gemini 和 OpenAI API。請確保：
-            - 您擁有合法的 API 金鑰，並遵守各服務條款（[Mistral](https://mistral.ai/terms)、[Gemini](https://ai.google.dev/terms)、[OpenAI](https://openai.com/policies)）。  
-            - 上傳的 PDF 文件符合版權法規，您有權進行處理。  
-            - 翻譯結果可能有誤，請自行驗證。  
-            本工具不儲存任何上傳檔案或 API 金鑰，所有處理均在暫存環境中完成。
+            **Disclaimer**  
+            This tool is for learning and research purposes only, integrating Mistral, Google Gemini, and OpenAI APIs. Please ensure:
+            - You have valid API keys and comply with the respective terms of service ([Mistral](https://mistral.ai/terms), [Gemini](https://ai.google.dev/terms), [OpenAI](https://openai.com/policies)).  
+            - The uploaded PDF document complies with copyright laws, and you have the right to process it.  
+            - The translation results may contain errors; please verify them yourself.  
+            - This tool does not store any uploaded files or API keys. All processing is done in a temporary environment.
 
-            **版權資訊**  
-            Copyright © 2025 David Chang. 根據 MIT 授權發布，詳見 [LICENSE](https://github.com/dodo13114arch/mistralocr-pdf2md-translator/blob/main/LICENSE)。  
+            **Copyright Information**  
+            Copyright © 2025 David Chang. Published under the MIT License, see [LICENSE](https://github.com/dodo13114arch/mistralocr-pdf2md-translator/blob/main/LICENSE).  
             GitHub: https://github.com/dodo13114arch/mistralocr-pdf2md-translator
             """)
-    
+
     return demo
 
 # ===== Main Execution =====
