@@ -1,110 +1,110 @@
-# Mistral OCR 翻譯PDF轉Markdown格式工具
+# Mistral OCR PDF-to-Markdown Translation Tool
 
 [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/dodo13114arch/mistral-ocr-translator-demo)
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/dodo13114arch/mistralocr-pdf2md-translator)
 
-**[點此試用線上 Demo (Hugging Face Spaces)](https://huggingface.co/spaces/dodo13114arch/mistral-ocr-translator-demo)** 
+**[Try the Online Demo (Hugging Face Spaces)](https://huggingface.co/spaces/dodo13114arch/mistral-ocr-translator-demo)**
 
 ---
 
-本工具可將 PDF 文件自動化轉換為 Markdown 格式，包含以下功能：
+This tool can automatically convert PDF documents into Markdown format and provides the following features:
 
-1. 使用 **Mistral OCR** 模型辨識 PDF 內文與圖片。
-2. 將辨識結果組成含圖片的 Markdown 檔。
-3. 使用 **Gemini** 或 **OpenAI** 模型將英文內容翻譯為**台灣繁體中文** (或其他語言，透過修改提示詞)。
-4. 使用 **Pixtral**, **Gemini**, 或 **OpenAI** 模型對圖片中的內容進行結構化 OCR (可選)。
-5. 匯出 Markdown 檔（原文版 + 翻譯版）與對應圖片。
+1. Uses the **Mistral OCR** model to recognize text and images in PDF files.
+2. Assembles the recognition results into a Markdown file with images.
+3. Uses the **Gemini** or **OpenAI** model to translate English content into **Taiwan Traditional Chinese** (or other languages by modifying the prompt).
+4. Optionally uses **Pixtral**, **Gemini**, or **OpenAI** models to perform structured OCR on image content.
+5. Exports Markdown files (original + translated versions) and corresponding images.
 
-## 安裝需求
+## Installation Requirements
 
-1. 安裝必要的 Python 套件：
+1. Install the required Python packages:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-2. 建立 `.env` 檔案，並設定 API 金鑰：
+2. Create a `.env` file and set up your API keys:
 
 ```
 # Mistral AI API Key
-# 請從 https://console.mistral.ai/ 獲取
+# Obtain from https://console.mistral.ai/
 MISTRAL_API_KEY=your_mistral_api_key_here
 
-# Google Gemini API Key (若需使用 Gemini 模型則必要)
-# 請從 https://aistudio.google.com/app/apikey 獲取
+# Google Gemini API Key (required to use Gemini model)
+# Obtain from https://aistudio.google.com/app/apikey
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# OpenAI API Key (若需使用 OpenAI 模型則必要)
-# 請從 https://platform.openai.com/api-keys 獲取
+# OpenAI API Key (required to use OpenAI model)
+# Obtain from https://platform.openai.com/api-keys
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-## 使用方法
+## Usage
 
-### 使用 Gradio 介面 
+### Using the Gradio Interface
 
-執行以下命令啟動 Gradio 介面：
+Run the following command to start the Gradio interface:
 
 ```bash
 python mistralocr_app.py
 ```
 
-然後在瀏覽器中開啟顯示的網址（通常是 http://127.0.0.1:7860）。
+Then open the displayed URL in your browser (typically http://127.0.0.1:7860).
 
-### 介面使用說明
+### Interface Instructions
 
-1.  上傳 PDF 檔案（可拖曳或點擊上傳）
-2.  基本設定：
-    *   指定輸出目錄（可選，留空將儲存至桌面 `MistralOCR_Output` 資料夾）
-    *   選擇是否使用現有檢查點（預設啟用）
-    *   選擇輸出格式（**可複選**「中文翻譯」、「英文原文」，預設兩者皆選）
-3.  處理選項：
-    *   選擇是否處理圖片 OCR（預設啟用）
-    *   *(翻譯功能由「輸出格式」選項控制)*
-4.  模型設定（可選）：
-    *   選擇 OCR 模型 (目前僅支援 Mistral)。
-    *   選擇結構化模型 (Pixtral, Gemini, OpenAI)。
-    *   選擇翻譯模型 (Gemini, OpenAI)。
-5.  進階設定（可選）：
-    *   修改翻譯系統提示詞 (可設定調整翻譯成其他語言)
-6.  點擊「開始處理」按鈕
-7.  處理過程中，可在「處理日誌」標籤頁查看詳細進度
-8.  處理完成後，結果將顯示在「輸出結果」標籤頁，檔案會自動儲存到指定目錄
+1. Upload a PDF file (drag and drop or click to upload).
+2. Basic settings:
+    * Specify the output directory (optional; leave blank to save to the desktop `MistralOCR_Output` folder).
+    * Choose whether to use existing checkpoints (enabled by default).
+    * Choose output format (**multiple options allowed**: "Chinese Translation", "English Original"; both are selected by default).
+3. Processing options:
+    * Choose whether to process image OCR (enabled by default).
+    * *(Translation is controlled by the "Output Format" selection)*
+4. Model settings (optional):
+    * Select the OCR model (currently only Mistral is supported).
+    * Select the structured model (Pixtral, Gemini, OpenAI).
+    * Select the translation model (Gemini, OpenAI).
+5. Advanced settings (optional):
+    * Modify the translation system prompt (can adjust translation to other languages).
+6. Click the "Start Processing" button.
+7. During processing, you can view detailed progress in the "Processing Log" tab.
+8. After processing is complete, results will be shown in the "Output Results" tab, and files will be automatically saved to the specified directory.
 
-## 檔案說明
+## File Descriptions
 
-- `mistralocr_app.py`：主要的 Gradio 應用程式腳本
-- `requirements.txt`：執行所需的 Python 套件列表
-- `mistralocr_pdf2md.ipynb`：根據 [Mistral 官方 Notebook](https://colab.research.google.com/github/mistralai/cookbook/blob/main/mistral/ocr/structured_ocr.ipynb) 修改的學習筆記，加入翻譯與圖片儲存功能。
-- `mistralocr_pdf2md_claude_refined.ipynb`: (可選) 另一個開發/測試用的 Notebook 版本。
-- **輸出檔案 (位於指定的輸出目錄內):**
-    *   `[檔名]_original.md`：處理後的原始（英文）Markdown 檔案 (若有勾選)
-    *   `[檔名]_translated.md`：翻譯後的（繁體中文）Markdown 檔案 (若有勾選)
-    *   `images_[檔名]/`：從 PDF 擷取並儲存的圖片資料夾
-    *   `checkpoints_[檔名]/`：處理過程中的檢查點資料夾，包含中間處理結果
+- `mistralocr_app.py`: Main Gradio application script.
+- `requirements.txt`: List of required Python packages.
+- `mistralocr_pdf2md.ipynb`: Modified study notebook based on the [Mistral official notebook](https://colab.research.google.com/github/mistralai/cookbook/blob/main/mistral/ocr/structured_ocr.ipynb), with translation and image saving features added.
+- `mistralocr_pdf2md_claude_refined.ipynb`: (Optional) Another development/testing notebook version.
+- **Output files (located in the specified output directory):**
+    * `[filename]_original.md`: Processed original (English) Markdown file (if selected).
+    * `[filename]_translated.md`: Translated (Traditional Chinese) Markdown file (if selected).
+    * `images_[filename]/`: Folder containing images extracted and saved from the PDF.
+    * `checkpoints_[filename]/`: Folder for checkpoints during processing, containing intermediate results.
 
-## 注意事項
+## Notes
 
-- 處理過程中會在**輸出目錄**內建立 `checkpoints_[檔名]` 資料夾，儲存中間結果，以便在中斷後繼續處理，避免重複請求 API。若要強制重新處理，可取消勾選「使用現有檢查點」或刪除對應的檢查點資料夾。
-- 擷取的圖片會儲存在**輸出目錄**內的 `images_[檔名]` 資料夾中。
-- 最終的 Markdown 檔案 (`_original.md`, `_translated.md`) 會儲存在使用者指定的**輸出目錄**中（若未指定，則預設為桌面上的 `MistralOCR_Output` 資料夾）。
-- 請確保 `.env` 檔案已正確設定您的 Mistral AI 和 Google Gemini API 金鑰。
+- During processing, a `checkpoints_[filename]` folder will be created in the **output directory** to store intermediate results, so you can resume processing after interruption and avoid repeated API requests. To force reprocessing, uncheck "Use Existing Checkpoints" or delete the corresponding checkpoint folder.
+- Extracted images will be saved in the `images_[filename]` folder in the **output directory**.
+- The final Markdown files (`_original.md`, `_translated.md`) will be saved in the user-specified **output directory** (if not specified, defaults to the `MistralOCR_Output` folder on the desktop).
+- Make sure the `.env` file is correctly configured with your Mistral AI and Google Gemini API keys.
 
-## 技術來源與引用
+## Technical Sources & References
 
-本專案整合並改作自以下技術或官方範例：
+This project is integrated and adapted from the following technologies and official examples:
 
-- [Mistral 文件處理功能說明](https://docs.mistral.ai/capabilities/document/)
-- [Mistral 官方 Colab Notebook](https://colab.research.google.com/github/mistralai/cookbook/blob/main/mistral/ocr/structured_ocr.ipynb)
+- [Mistral Document Processing Capabilities](https://docs.mistral.ai/capabilities/document/)
+- [Mistral Official Colab Notebook](https://colab.research.google.com/github/mistralai/cookbook/blob/main/mistral/ocr/structured_ocr.ipynb)
 
-其中 `mistralocr_pdf2md.ipynb` 為學習用途所建立，根據官方範例進行延伸與修改，加入了中英文翻譯流程與本地圖片儲存功能等。
+The `mistralocr_pdf2md.ipynb` notebook is for learning purposes, extended and modified based on the official example, with added translation and local image saving features.
 
-本工具亦整合以下第三方 API/工具：
+This tool also integrates the following third-party APIs/tools:
 
 - [Mistral API](https://mistral.ai/)
 - [Google Gemini API](https://ai.google.dev/)
 - [OpenAI API](https://openai.com/)
 - [Gradio](https://www.gradio.app/)
 
-> 本專案為個人開發與學習用途，與上述服務提供者無任何官方關聯。請使用者自行準備合法的 API 金鑰，並遵守各 API 提供商的使用條款 ([Mistral](https://mistral.ai/terms)、[Gemini](https://ai.google.dev/terms)、[OpenAI](https://openai.com/policies))。
+> This project is for personal development and learning purposes only, and has no official affiliation with the aforementioned service providers. Users must prepare their own legal API keys and comply with the terms of service of each API provider ([Mistral](https://mistral.ai/terms), [Gemini](https://ai.google.dev/terms), [OpenAI](https://openai.com/policies)).
